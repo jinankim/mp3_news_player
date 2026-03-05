@@ -109,13 +109,42 @@
       const [showSubtitleList, setShowSubtitleList] = useState(true);
 
       const handleAudioUpload = (e) => {
-        const file = e.target.files?.[0];
-        if (file) {
-          const url = URL.createObjectURL(file);
+        const files = Array.from(e.target.files || []);
+        if (files.length === 0) return;
+
+        let audioFile = null;
+        let srtFile = null;
+
+        // 선택된 파일들을 순회하며 오디오와 자막 파일 분류
+        files.forEach(file => {
+          if (file.type.startsWith('audio/') || file.name.match(/\.(mp3|wav|m4a|ogg|aac|flac)$/i)) {
+            audioFile = file;
+          } else if (file.name.match(/\.srt$/i)) {
+            srtFile = file;
+          }
+        });
+
+        // 오디오 파일 처리
+        if (audioFile) {
+          const url = URL.createObjectURL(audioFile);
           setAudioSrc(url);
-          setAudioFileName(file.name);
+          setAudioFileName(audioFile.name);
           setIsPlaying(false);
           resetState();
+        }
+
+        // 자막 파일이 함께 선택된 경우 자동으로 함께 처리
+        if (srtFile) {
+          setSrtFileName(srtFile.name);
+          const reader = new FileReader();
+          reader.onload = (event) => {
+            if (typeof event.target?.result === 'string') {
+              const parsed = parseSRT(event.target.result);
+              setSubtitles(parsed);
+              setShowSubtitleList(true); // 자막 파일 업로드 시 기본으로 열림
+            }
+          };
+          reader.readAsText(srtFile, 'utf-8');
         }
       };
 
@@ -246,10 +275,10 @@
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <label className="relative border-2 border-dashed border-neutral-600 rounded-xl p-4 hover:bg-neutral-700/50 transition flex flex-col items-center justify-center cursor-pointer h-32 group">
-                  <input type="file" accept="audio/*" onChange={handleAudioUpload} className="hidden" />
+                  <input type="file" accept="audio/*,.srt" multiple onChange={handleAudioUpload} className="hidden" />
                   <Icon name="music" className="w-8 h-8 mb-2 text-neutral-400 group-hover:text-blue-400 transition" />
                   <span className="text-sm font-medium text-center text-neutral-300">
-                    {audioFileName ? audioFileName : "오디오 파일(MP3 등) 선택"}
+                    {audioFileName ? audioFileName : "오디오 선택 (자막과 함께 다중 선택 가능)"}
                   </span>
                 </label>
 
@@ -311,8 +340,24 @@
                     <Icon name="rotate-ccw" className="w-6 h-6" />
                   </button>
                   
-                  <button onClick={togglePlay} disabled={!audioSrc} className="w-16 h-16 bg-blue-500 text-white rounded-full flex items-center justify-center hover:bg-blue-600 disabled:opacity-50 disabled:bg-neutral-600 shadow-lg shadow-blue-500/20 transition transform active:scale-95">
-                    <Icon name={isPlaying ? "pause" : "play"} className={`w-8 h-8 fill-current ${!isPlaying ? 'ml-1' : ''}`} />
+                  {/* 플레이/일시정지 버튼 (첨부된 이미지 스타일 적용) */}
+                  <button 
+                    onClick={togglePlay} 
+                    disabled={!audioSrc} 
+                    className="w-16 h-16 bg-blue-500 text-white flex items-center justify-center hover:bg-blue-600 disabled:opacity-50 disabled:bg-neutral-600 shadow-lg shadow-blue-500/20 transition-all duration-300 transform active:scale-95 rounded-full"
+                  >
+                    {isPlaying ? (
+                      /* 일시정지 아이콘 (두 개의 둥근 세로 막대) */
+                      <svg viewBox="0 0 24 24" fill="currentColor" className="w-8 h-8">
+                        <rect x="6" y="5" width="4" height="14" rx="2" />
+                        <rect x="14" y="5" width="4" height="14" rx="2" />
+                      </svg>
+                    ) : (
+                      /* 플레이 아이콘 (삼각형) */
+                      <svg viewBox="0 0 24 24" fill="currentColor" className="w-8 h-8 ml-1.5" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round">
+                        <path d="M6 4l14 8-14 8z" />
+                      </svg>
+                    )}
                   </button>
 
                   <button onClick={() => skip(5)} disabled={!audioSrc} className="p-2 text-neutral-400 hover:text-white disabled:opacity-50 transition transform -scale-x-100">

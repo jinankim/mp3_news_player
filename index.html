@@ -141,7 +141,6 @@
       const [showSubtitleList, setShowSubtitleList] = useState(true);
       const [playbackRate, setPlaybackRate] = useState(1.0);
       
-      // 파일 업로드 영역 표시 여부 (기본은 표시)
       const [showUploader, setShowUploader] = useState(true);
 
       // --- 컴포넌트 로드 시 IndexedDB에서 마지막 파일 불러오기 ---
@@ -153,7 +152,7 @@
               const url = URL.createObjectURL(lastAudio);
               setAudioSrc(url);
               setAudioFileName(lastAudio.name);
-              setShowUploader(false); // 파일을 성공적으로 불러오면 업로더 숨김
+              setShowUploader(false); 
             }
 
             const lastSrt = await loadFromDB('lastSrt');
@@ -206,7 +205,10 @@
           setIsPlaying(false);
           resetState();
           await saveToDB('lastAudio', audioFile);
-          setShowUploader(false); // 업로드 성공 시 창 닫기
+          setShowUploader(false); 
+
+          // ★ 새 파일이 로드되면 저장된 재생 위치 초기화
+          localStorage.setItem('lastSavedTime', '0');
         }
 
         if (srtFile) {
@@ -263,6 +265,13 @@
         const time = audioRef.current.currentTime;
         setCurrentTime(time);
 
+        // ★ 실시간으로 현재 재생 위치(초)를 로컬 스토리지에 저장 (성능 최적화를 위해 초 단위가 바뀔 때만)
+        const currentSecond = Math.floor(time);
+        const savedSecond = parseInt(localStorage.getItem('lastSavedTime') || '0', 10);
+        if (currentSecond !== savedSecond) {
+          localStorage.setItem('lastSavedTime', currentSecond.toString());
+        }
+
         if (isRepeatActive && pointA !== null && pointB !== null) {
           if (time >= pointB) {
             audioRef.current.currentTime = pointA;
@@ -290,7 +299,15 @@
 
       const handleLoadedMetadata = () => {
         if (audioRef.current) {
-          setDuration(audioRef.current.duration);
+          const currentDuration = audioRef.current.duration;
+          setDuration(currentDuration);
+
+          // ★ 메타데이터가 로드되었을 때 (파일 불러오기 완료 시), 저장된 시간이 있다면 해당 위치로 이동
+          const savedTime = parseFloat(localStorage.getItem('lastSavedTime') || '0');
+          if (savedTime > 0 && savedTime < currentDuration) {
+            audioRef.current.currentTime = savedTime;
+            setCurrentTime(savedTime);
+          }
         }
       };
 
@@ -343,7 +360,7 @@
         <div className="min-h-screen flex flex-col items-center w-full p-4 md:p-8">
           <div className="w-full max-w-4xl space-y-6">
             
-            {/* 미디어 파일 로드 섹션 (접기/펼치기 적용됨) */}
+            {/* 미디어 파일 로드 섹션 */}
             <div className="bg-neutral-800 rounded-2xl p-6 shadow-xl border border-neutral-700 mt-8 transition-all duration-300">
               <div className={`flex justify-between items-center ${showUploader ? 'mb-6' : ''}`}>
                 <h1 className="text-xl md:text-2xl font-bold flex items-center gap-2 text-blue-400">
@@ -351,7 +368,6 @@
                   {showUploader ? "미디어 파일 로드" : "재생 중인 미디어"}
                 </h1>
                 
-                {/* 닫고 여는 버튼 */}
                 <button 
                   onClick={() => setShowUploader(!showUploader)}
                   className="flex items-center gap-2 px-3 py-1.5 bg-neutral-700 hover:bg-neutral-600 active:bg-neutral-500 rounded-lg text-sm font-medium text-neutral-200 transition"
@@ -547,7 +563,6 @@
                           <div className={`text-xs font-mono mb-1 ${isActive ? 'text-yellow-500/70' : 'text-neutral-500'}`}>
                             {formatTime(sub.start)} - {formatTime(sub.end)}
                           </div>
-                          {/* 자막 폰트 크기 1.3배(15px -> 19.5px) 확대 적용됨 */}
                           <div className={`text-[19.5px] whitespace-pre-line leading-relaxed ${isActive ? 'font-bold' : 'font-normal'}`}>
                             {sub.text}
                           </div>

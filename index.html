@@ -149,8 +149,6 @@
       const [playbackRate, setPlaybackRate] = useState(1.0);
       
       const [showUploader, setShowUploader] = useState(true);
-
-      // ★ 자막 리스트 배경 반전(라이트 모드) 상태 추가
       const [isLightMode, setIsLightMode] = useState(false);
 
       // --- 컴포넌트 로드 시 IndexedDB에서 마지막 파일 불러오기 ---
@@ -363,57 +361,59 @@
         <div className="min-h-screen flex flex-col items-center w-full p-4 md:p-8">
           <div className="w-full max-w-4xl space-y-6">
             
-            {/* 미디어 파일 로드 섹션 */}
-            <div className="bg-neutral-800 rounded-2xl p-6 shadow-xl border border-neutral-700 mt-8 transition-all duration-300">
-              <div className={`flex justify-between items-center ${showUploader ? 'mb-6' : ''}`}>
-                <h1 className="text-xl md:text-2xl font-bold flex items-center gap-2 text-blue-400">
-                  <Icon name={showUploader ? "folder-plus" : "disc"} className="w-6 h-6 mr-1" /> 
-                  {showUploader ? "미디어 파일 로드" : "재생 중인 미디어"}
-                </h1>
+            {/* ★ 미디어 파일 로드 섹션 (전체 자막 리스트가 열려있을 때는 완전히 숨김) */}
+            {!showSubtitleList && (
+              <div className="bg-neutral-800 rounded-2xl p-6 shadow-xl border border-neutral-700 mt-8 transition-all duration-300">
+                <div className={`flex justify-between items-center ${showUploader ? 'mb-6' : ''}`}>
+                  <h1 className="text-xl md:text-2xl font-bold flex items-center gap-2 text-blue-400">
+                    <Icon name={showUploader ? "folder-plus" : "disc"} className="w-6 h-6 mr-1" /> 
+                    {showUploader ? "미디어 파일 로드" : "재생 중인 미디어"}
+                  </h1>
+                  
+                  <button 
+                    onClick={() => setShowUploader(!showUploader)}
+                    className="flex items-center gap-2 px-3 py-1.5 bg-neutral-700 hover:bg-neutral-600 active:bg-neutral-500 rounded-lg text-sm font-medium text-neutral-200 transition"
+                  >
+                    <Icon name={showUploader ? "chevron-up" : "chevron-down"} className="w-4 h-4" />
+                    {showUploader ? "접기" : "다른 파일 열기"}
+                  </button>
+                </div>
                 
-                <button 
-                  onClick={() => setShowUploader(!showUploader)}
-                  className="flex items-center gap-2 px-3 py-1.5 bg-neutral-700 hover:bg-neutral-600 active:bg-neutral-500 rounded-lg text-sm font-medium text-neutral-200 transition"
-                >
-                  <Icon name={showUploader ? "chevron-up" : "chevron-down"} className="w-4 h-4" />
-                  {showUploader ? "접기" : "다른 파일 열기"}
-                </button>
-              </div>
-              
-              {showUploader ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <label className="relative border-2 border-dashed border-neutral-600 rounded-xl p-4 hover:bg-neutral-700/50 transition flex flex-col items-center justify-center cursor-pointer h-32 group">
-                    <input type="file" accept="audio/*,.srt" multiple onChange={handleAudioUpload} className="hidden" />
-                    <Icon name="music" className="w-8 h-8 mb-2 text-neutral-400 group-hover:text-blue-400 transition" />
-                    <span className="text-sm font-medium text-center text-neutral-300 px-2 line-clamp-2">
-                      {audioFileName ? audioFileName : "오디오 선택 (자막과 함께 다중 선택 가능)"}
-                    </span>
-                  </label>
+                {showUploader ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <label className="relative border-2 border-dashed border-neutral-600 rounded-xl p-4 hover:bg-neutral-700/50 transition flex flex-col items-center justify-center cursor-pointer h-32 group">
+                      <input type="file" accept="audio/*,.srt" multiple onChange={handleAudioUpload} className="hidden" />
+                      <Icon name="music" className="w-8 h-8 mb-2 text-neutral-400 group-hover:text-blue-400 transition" />
+                      <span className="text-sm font-medium text-center text-neutral-300 px-2 line-clamp-2">
+                        {audioFileName ? audioFileName : "오디오 선택 (자막과 함께 다중 선택 가능)"}
+                      </span>
+                    </label>
 
-                  <label className="relative border-2 border-dashed border-neutral-600 rounded-xl p-4 hover:bg-neutral-700/50 transition flex flex-col items-center justify-center cursor-pointer h-32 group">
-                    <input type="file" accept=".srt" onChange={handleSrtUpload} className="hidden" />
-                    <Icon name="file-text" className="w-8 h-8 mb-2 text-neutral-400 group-hover:text-green-400 transition" />
-                    <span className="text-sm font-medium text-center text-neutral-300 px-2 line-clamp-2">
-                      {srtFileName ? srtFileName : "SRT 자막 파일 선택"}
-                    </span>
-                  </label>
-                </div>
-              ) : (
-                <div className="flex flex-col md:flex-row gap-4 mt-4 text-sm text-neutral-400 bg-neutral-900/50 p-4 rounded-xl border border-neutral-700/50">
-                  <div className="flex items-center gap-2 flex-1 min-w-0">
-                    <Icon name="music" className="w-4 h-4 shrink-0 text-blue-400" /> 
-                    <span className="truncate">{audioFileName || "선택된 오디오가 없습니다."}</span>
+                    <label className="relative border-2 border-dashed border-neutral-600 rounded-xl p-4 hover:bg-neutral-700/50 transition flex flex-col items-center justify-center cursor-pointer h-32 group">
+                      <input type="file" accept=".srt" onChange={handleSrtUpload} className="hidden" />
+                      <Icon name="file-text" className="w-8 h-8 mb-2 text-neutral-400 group-hover:text-green-400 transition" />
+                      <span className="text-sm font-medium text-center text-neutral-300 px-2 line-clamp-2">
+                        {srtFileName ? srtFileName : "SRT 자막 파일 선택"}
+                      </span>
+                    </label>
                   </div>
-                  <div className="flex items-center gap-2 flex-1 min-w-0">
-                    <Icon name="file-text" className="w-4 h-4 shrink-0 text-green-400" /> 
-                    <span className="truncate">{srtFileName || "선택된 자막이 없습니다."}</span>
+                ) : (
+                  <div className="flex flex-col md:flex-row gap-4 mt-4 text-sm text-neutral-400 bg-neutral-900/50 p-4 rounded-xl border border-neutral-700/50">
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      <Icon name="music" className="w-4 h-4 shrink-0 text-blue-400" /> 
+                      <span className="truncate">{audioFileName || "선택된 오디오가 없습니다."}</span>
+                    </div>
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      <Icon name="file-text" className="w-4 h-4 shrink-0 text-green-400" /> 
+                      <span className="truncate">{srtFileName || "선택된 자막이 없습니다."}</span>
+                    </div>
                   </div>
-                </div>
-              )}
-            </div>
+                )}
+              </div>
+            )}
 
             {/* 플레이어 영역 */}
-            <div className="bg-neutral-800 rounded-2xl p-6 shadow-xl border border-neutral-700">
+            <div className={`bg-neutral-800 rounded-2xl p-6 shadow-xl border border-neutral-700 ${showSubtitleList ? 'mt-8' : ''}`}>
               <audio 
                 ref={audioRef}
                 src={audioSrc || undefined}
@@ -540,7 +540,8 @@
 
             {/* 자막 리스트 */}
             {subtitles.length > 0 && (
-              <div className={`rounded-2xl p-6 shadow-xl border flex flex-col mb-8 transition-all duration-300 ${showSubtitleList ? 'h-[500px] md:h-[600px]' : 'h-auto'} ${isLightMode && showSubtitleList ? 'bg-white border-gray-300' : 'bg-neutral-800 border-neutral-700'}`}>
+              /* ★ 화면 비율 단위(vh)를 사용하여 리스트 창 높이를 화면에 꽉 차게 극대화 */
+              <div className={`rounded-2xl p-6 shadow-xl border flex flex-col mb-8 transition-all duration-300 ${showSubtitleList ? 'h-[65vh] md:h-[75vh]' : 'h-auto'} ${isLightMode && showSubtitleList ? 'bg-white border-gray-300' : 'bg-neutral-800 border-neutral-700'}`}>
                 
                 {/* 헤더 부분 */}
                 <div className={`flex justify-between items-center mb-4 border-b pb-2 ${isLightMode && showSubtitleList ? 'border-gray-200' : 'border-neutral-700'}`}>
@@ -548,7 +549,7 @@
                     <Icon name="list" className={`w-5 h-5 mr-2 ${isLightMode && showSubtitleList ? 'text-gray-500' : 'text-neutral-400'}`} /> 전체 자막 리스트
                   </h2>
                   <div className="flex items-center gap-2">
-                    {/* ★ 라이트/다크 모드 전환 버튼 (리스트가 열려있을 때만 보임) */}
+                    {/* 라이트/다크 모드 전환 버튼 (리스트가 열려있을 때만 보임) */}
                     {showSubtitleList && (
                       <button 
                         onClick={() => setIsLightMode(!isLightMode)}

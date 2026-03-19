@@ -138,7 +138,6 @@
       const [pointB, setPointB] = useState(null);
       const [isRepeatActive, setIsRepeatActive] = useState(false);
 
-      // ★ 처음 열었을 때 전체 자막 리스트를 닫힌 상태로 시작 (false)
       const [showSubtitleList, setShowSubtitleList] = useState(false);
       const [playbackRate, setPlaybackRate] = useState(1.0);
       
@@ -164,7 +163,6 @@
                 if (typeof event.target?.result === 'string') {
                   const parsed = parseSRT(event.target.result);
                   setSubtitles(parsed);
-                  // 자동 열림 로직 제거
                 }
               };
               reader.readAsText(lastSrt, 'utf-8');
@@ -176,7 +174,6 @@
         
         loadLastFiles();
       }, []);
-      // --------------------------------------------------------
 
       useEffect(() => {
         if (audioRef.current) {
@@ -218,7 +215,6 @@
             if (typeof event.target?.result === 'string') {
               const parsed = parseSRT(event.target.result);
               setSubtitles(parsed);
-              // 자동 열림 로직 제거
               await saveToDB('lastSrt', srtFile);
             }
           };
@@ -235,7 +231,6 @@
             if (typeof event.target?.result === 'string') {
               const parsed = parseSRT(event.target.result);
               setSubtitles(parsed);
-              // 자동 열림 로직 제거
               await saveToDB('lastSrt', file);
             }
           };
@@ -418,17 +413,20 @@
                 className="hidden"
               />
 
-              <div className="min-h-[140px] bg-neutral-900 rounded-xl p-6 flex items-center justify-center text-center mb-6 border border-neutral-700 shadow-inner">
-                {currentSubtitleIndex !== -1 && subtitles[currentSubtitleIndex] ? (
-                  <p className="text-2xl md:text-3xl font-bold leading-relaxed tracking-wide text-yellow-400 whitespace-pre-line drop-shadow-md transition-all duration-200">
-                    {subtitles[currentSubtitleIndex].text}
-                  </p>
-                ) : (
-                  <p className="text-lg text-neutral-500 whitespace-pre-line">
-                    {audioSrc ? "자막이 없는 구간입니다." : "오디오와 자막 파일을 업로드 해주세요."}
-                  </p>
-                )}
-              </div>
+              {/* ★ 상단 자막창: 리스트가 닫혀있을 때만 표시되도록 수정 */}
+              {!showSubtitleList && (
+                <div className="min-h-[140px] bg-neutral-900 rounded-xl p-6 flex items-center justify-center text-center mb-6 border border-neutral-700 shadow-inner">
+                  {currentSubtitleIndex !== -1 && subtitles[currentSubtitleIndex] ? (
+                    <p className="text-2xl md:text-3xl font-bold leading-relaxed tracking-wide text-yellow-400 whitespace-pre-line drop-shadow-md transition-all duration-200">
+                      {subtitles[currentSubtitleIndex].text}
+                    </p>
+                  ) : (
+                    <p className="text-lg text-neutral-500 whitespace-pre-line">
+                      {audioSrc ? "자막이 없는 구간입니다." : "오디오와 자막 파일을 업로드 해주세요."}
+                    </p>
+                  )}
+                </div>
+              )}
 
               {/* 진행바 */}
               <div className="relative w-full h-3 bg-neutral-700 rounded-full mb-2 cursor-pointer group">
@@ -504,33 +502,36 @@
                   </div>
                 </div>
 
-                {/* 아랫줄: 구간 반복 컨트롤 */}
-                <div className="flex items-center justify-center md:justify-end gap-2 bg-neutral-900 p-2 rounded-xl border border-neutral-700 w-full">
-                  <button onClick={setA} disabled={!audioSrc} className={`px-4 py-2 text-sm font-bold rounded-lg transition flex items-center gap-1 ${pointA !== null ? 'bg-green-500/20 text-green-400' : 'bg-neutral-800 text-neutral-300 hover:bg-neutral-700'}`}>
-                    A {pointA !== null && <span className="text-xs font-normal">({formatTime(pointA)})</span>}
-                  </button>
-                  
-                  <button onClick={setB} disabled={!audioSrc || pointA === null} className={`px-4 py-2 text-sm font-bold rounded-lg transition flex items-center gap-1 ${pointB !== null ? 'bg-red-500/20 text-red-400' : 'bg-neutral-800 text-neutral-300 hover:bg-neutral-700'}`}>
-                    B {pointB !== null && <span className="text-xs font-normal">({formatTime(pointB)})</span>}
-                  </button>
+                {/* ★ 아랫줄: 구간 반복 컨트롤 (리스트가 닫혀있을 때만 표시되도록 수정) */}
+                {!showSubtitleList && (
+                  <div className="flex items-center justify-center md:justify-end gap-2 bg-neutral-900 p-2 rounded-xl border border-neutral-700 w-full">
+                    <button onClick={setA} disabled={!audioSrc} className={`px-4 py-2 text-sm font-bold rounded-lg transition flex items-center gap-1 ${pointA !== null ? 'bg-green-500/20 text-green-400' : 'bg-neutral-800 text-neutral-300 hover:bg-neutral-700'}`}>
+                      A {pointA !== null && <span className="text-xs font-normal">({formatTime(pointA)})</span>}
+                    </button>
+                    
+                    <button onClick={setB} disabled={!audioSrc || pointA === null} className={`px-4 py-2 text-sm font-bold rounded-lg transition flex items-center gap-1 ${pointB !== null ? 'bg-red-500/20 text-red-400' : 'bg-neutral-800 text-neutral-300 hover:bg-neutral-700'}`}>
+                      B {pointB !== null && <span className="text-xs font-normal">({formatTime(pointB)})</span>}
+                    </button>
 
-                  <div className="w-px h-8 bg-neutral-700 mx-1"></div>
+                    <div className="w-px h-8 bg-neutral-700 mx-1"></div>
 
-                  <button onClick={toggleRepeat} disabled={pointA === null || pointB === null} className={`p-2 rounded-lg transition ${isRepeatActive ? 'bg-blue-500 text-white' : 'bg-neutral-800 text-neutral-400 hover:bg-neutral-700'}`}>
-                    <Icon name="repeat" className="w-5 h-5" />
-                  </button>
+                    <button onClick={toggleRepeat} disabled={pointA === null || pointB === null} className={`p-2 rounded-lg transition ${isRepeatActive ? 'bg-blue-500 text-white' : 'bg-neutral-800 text-neutral-400 hover:bg-neutral-700'}`}>
+                      <Icon name="repeat" className="w-5 h-5" />
+                    </button>
 
-                  <button onClick={clearAB} disabled={pointA === null && pointB === null} className="p-2 bg-neutral-800 text-neutral-400 rounded-lg hover:bg-neutral-700 hover:text-red-400 transition" title="구간 초기화">
-                    <Icon name="trash-2" className="w-5 h-5" />
-                  </button>
-                </div>
+                    <button onClick={clearAB} disabled={pointA === null && pointB === null} className="p-2 bg-neutral-800 text-neutral-400 rounded-lg hover:bg-neutral-700 hover:text-red-400 transition" title="구간 초기화">
+                      <Icon name="trash-2" className="w-5 h-5" />
+                    </button>
+                  </div>
+                )}
 
               </div>
             </div>
 
             {/* 자막 리스트 */}
             {subtitles.length > 0 && (
-              <div className={`bg-neutral-800 rounded-2xl p-6 shadow-xl border border-neutral-700 flex flex-col mb-8 transition-all duration-300 ${showSubtitleList ? 'h-96' : 'h-auto'}`}>
+              /* ★ 전체 자막 리스트가 열렸을 때 창 크기를 훨씬 크게(h-[500px] md:h-[600px]) 확장하도록 수정 */
+              <div className={`bg-neutral-800 rounded-2xl p-6 shadow-xl border border-neutral-700 flex flex-col mb-8 transition-all duration-300 ${showSubtitleList ? 'h-[500px] md:h-[600px]' : 'h-auto'}`}>
                 <div className="flex justify-between items-center mb-4 border-b border-neutral-700 pb-2">
                   <h2 className="text-lg font-bold flex items-center gap-2 text-neutral-200">
                     <Icon name="list" className="w-5 h-5 text-neutral-400 mr-2" /> 전체 자막 리스트
@@ -561,7 +562,8 @@
                           <div className={`text-xs font-mono mb-1 ${isActive ? 'text-yellow-500/70' : 'text-neutral-500'}`}>
                             {formatTime(sub.start)} - {formatTime(sub.end)}
                           </div>
-                          <div className={`text-[19.5px] whitespace-pre-line leading-relaxed ${isActive ? 'font-bold' : 'font-normal'}`}>
+                          {/* ★ 상단 자막창과 동일한 폰트 크기(text-2xl md:text-3xl) 적용 */}
+                          <div className={`text-2xl md:text-3xl whitespace-pre-line leading-relaxed tracking-wide ${isActive ? 'font-bold' : 'font-normal'}`}>
                             {sub.text}
                           </div>
                         </div>

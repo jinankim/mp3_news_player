@@ -11,10 +11,17 @@
   <script src="https://unpkg.com/feather-icons"></script>
 
   <style>
+    /* 다크 모드 스크롤바 */
     .custom-scrollbar::-webkit-scrollbar { width: 8px; }
     .custom-scrollbar::-webkit-scrollbar-track { background: #262626; border-radius: 4px; }
     .custom-scrollbar::-webkit-scrollbar-thumb { background: #525252; border-radius: 4px; }
     .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #737373; }
+
+    /* 라이트 모드 스크롤바 */
+    .light-scrollbar::-webkit-scrollbar { width: 8px; }
+    .light-scrollbar::-webkit-scrollbar-track { background: #f3f4f6; border-radius: 4px; }
+    .light-scrollbar::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
+    .light-scrollbar::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
   </style>
 </head>
 <body class="bg-[#171717] text-white m-0 p-0 font-sans">
@@ -142,6 +149,9 @@
       const [playbackRate, setPlaybackRate] = useState(1.0);
       
       const [showUploader, setShowUploader] = useState(true);
+
+      // ★ 자막 리스트 배경 반전(라이트 모드) 상태 추가
+      const [isLightMode, setIsLightMode] = useState(false);
 
       // --- 컴포넌트 로드 시 IndexedDB에서 마지막 파일 불러오기 ---
       useEffect(() => {
@@ -413,7 +423,7 @@
                 className="hidden"
               />
 
-              {/* ★ 상단 자막창: 리스트가 닫혀있을 때만 표시되도록 수정 */}
+              {/* 리스트가 닫혀있을 때만 표시되는 상단 자막창 */}
               {!showSubtitleList && (
                 <div className="min-h-[140px] bg-neutral-900 rounded-xl p-6 flex items-center justify-center text-center mb-6 border border-neutral-700 shadow-inner">
                   {currentSubtitleIndex !== -1 && subtitles[currentSubtitleIndex] ? (
@@ -502,7 +512,7 @@
                   </div>
                 </div>
 
-                {/* ★ 아랫줄: 구간 반복 컨트롤 (리스트가 닫혀있을 때만 표시되도록 수정) */}
+                {/* 구간 반복 컨트롤 (리스트가 닫혀있을 때만 표시) */}
                 {!showSubtitleList && (
                   <div className="flex items-center justify-center md:justify-end gap-2 bg-neutral-900 p-2 rounded-xl border border-neutral-700 w-full">
                     <button onClick={setA} disabled={!audioSrc} className={`px-4 py-2 text-sm font-bold rounded-lg transition flex items-center gap-1 ${pointA !== null ? 'bg-green-500/20 text-green-400' : 'bg-neutral-800 text-neutral-300 hover:bg-neutral-700'}`}>
@@ -530,23 +540,38 @@
 
             {/* 자막 리스트 */}
             {subtitles.length > 0 && (
-              /* ★ 전체 자막 리스트가 열렸을 때 창 크기를 훨씬 크게(h-[500px] md:h-[600px]) 확장하도록 수정 */
-              <div className={`bg-neutral-800 rounded-2xl p-6 shadow-xl border border-neutral-700 flex flex-col mb-8 transition-all duration-300 ${showSubtitleList ? 'h-[500px] md:h-[600px]' : 'h-auto'}`}>
-                <div className="flex justify-between items-center mb-4 border-b border-neutral-700 pb-2">
-                  <h2 className="text-lg font-bold flex items-center gap-2 text-neutral-200">
-                    <Icon name="list" className="w-5 h-5 text-neutral-400 mr-2" /> 전체 자막 리스트
+              <div className={`rounded-2xl p-6 shadow-xl border flex flex-col mb-8 transition-all duration-300 ${showSubtitleList ? 'h-[500px] md:h-[600px]' : 'h-auto'} ${isLightMode && showSubtitleList ? 'bg-white border-gray-300' : 'bg-neutral-800 border-neutral-700'}`}>
+                
+                {/* 헤더 부분 */}
+                <div className={`flex justify-between items-center mb-4 border-b pb-2 ${isLightMode && showSubtitleList ? 'border-gray-200' : 'border-neutral-700'}`}>
+                  <h2 className={`text-lg font-bold flex items-center gap-2 ${isLightMode && showSubtitleList ? 'text-gray-800' : 'text-neutral-200'}`}>
+                    <Icon name="list" className={`w-5 h-5 mr-2 ${isLightMode && showSubtitleList ? 'text-gray-500' : 'text-neutral-400'}`} /> 전체 자막 리스트
                   </h2>
-                  <button 
-                    onClick={() => setShowSubtitleList(!showSubtitleList)}
-                    className="flex items-center gap-2 px-3 py-1.5 bg-neutral-700 hover:bg-neutral-600 active:bg-neutral-500 rounded-lg text-sm font-medium text-neutral-200 transition"
-                  >
-                    <Icon name={showSubtitleList ? "eye-off" : "eye"} className="w-4 h-4 mr-1" />
-                    {showSubtitleList ? "리스트 닫기" : "리스트 열기"}
-                  </button>
+                  <div className="flex items-center gap-2">
+                    {/* ★ 라이트/다크 모드 전환 버튼 (리스트가 열려있을 때만 보임) */}
+                    {showSubtitleList && (
+                      <button 
+                        onClick={() => setIsLightMode(!isLightMode)}
+                        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition ${isLightMode ? 'bg-gray-200 hover:bg-gray-300 text-gray-800' : 'bg-neutral-700 hover:bg-neutral-600 text-neutral-200'}`}
+                      >
+                        <Icon name={isLightMode ? "moon" : "sun"} className="w-4 h-4 mr-1" />
+                        {isLightMode ? "다크 모드" : "라이트 모드"}
+                      </button>
+                    )}
+
+                    <button 
+                      onClick={() => setShowSubtitleList(!showSubtitleList)}
+                      className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition ${isLightMode && showSubtitleList ? 'bg-gray-200 hover:bg-gray-300 text-gray-800' : 'bg-neutral-700 hover:bg-neutral-600 active:bg-neutral-500 text-neutral-200'}`}
+                    >
+                      <Icon name={showSubtitleList ? "eye-off" : "eye"} className="w-4 h-4 mr-1" />
+                      {showSubtitleList ? "리스트 닫기" : "리스트 열기"}
+                    </button>
+                  </div>
                 </div>
                 
+                {/* 리스트 본문 */}
                 {showSubtitleList && (
-                  <div className="flex-1 overflow-y-auto pr-2 space-y-2 custom-scrollbar" ref={subtitleListRef}>
+                  <div className={`flex-1 overflow-y-auto pr-2 space-y-2 ${isLightMode ? 'light-scrollbar' : 'custom-scrollbar'}`} ref={subtitleListRef}>
                     {subtitles.map((sub, index) => {
                       const isActive = index === currentSubtitleIndex;
                       return (
@@ -555,14 +580,21 @@
                           onClick={() => seekToTime(sub.start)}
                           className={`p-3 rounded-xl cursor-pointer transition border ${
                             isActive 
-                              ? 'bg-yellow-500/20 border-yellow-500/50 text-yellow-400 shadow-[0_0_15px_rgba(234,179,8,0.15)]' 
-                              : 'border-transparent hover:bg-neutral-700/50 text-neutral-300'
+                              ? (isLightMode 
+                                  ? 'bg-yellow-100 border-yellow-400 text-yellow-900 shadow-[0_0_15px_rgba(234,179,8,0.3)]' 
+                                  : 'bg-yellow-500/20 border-yellow-500/50 text-yellow-400 shadow-[0_0_15px_rgba(234,179,8,0.15)]')
+                              : (isLightMode 
+                                  ? 'border-transparent hover:bg-gray-100 text-gray-800' 
+                                  : 'border-transparent hover:bg-neutral-700/50 text-neutral-300')
                           }`}
                         >
-                          <div className={`text-xs font-mono mb-1 ${isActive ? 'text-yellow-500/70' : 'text-neutral-500'}`}>
+                          <div className={`text-xs font-mono mb-1 ${
+                            isActive 
+                              ? (isLightMode ? 'text-yellow-700' : 'text-yellow-500/70') 
+                              : (isLightMode ? 'text-gray-500' : 'text-neutral-500')
+                          }`}>
                             {formatTime(sub.start)} - {formatTime(sub.end)}
                           </div>
-                          {/* ★ 상단 자막창과 동일한 폰트 크기(text-2xl md:text-3xl) 적용 */}
                           <div className={`text-2xl md:text-3xl whitespace-pre-line leading-relaxed tracking-wide ${isActive ? 'font-bold' : 'font-normal'}`}>
                             {sub.text}
                           </div>

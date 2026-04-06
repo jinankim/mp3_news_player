@@ -259,8 +259,14 @@
                 const idx = subtitles.findIndex(s => t >= s.start && t <= s.end);
                 if (idx !== currentSubtitleIndex) {
                   setCurrentSubtitleIndex(idx);
-                  if (showSubtitleList && idx !== -1 && subtitleListRef.current?.children[idx]) {
-                    subtitleListRef.current.children[idx].scrollIntoView({ behavior: 'smooth', block: 'center' });
+                  if (showSubtitleList && idx !== -1 && subtitleListRef.current) {
+                    // ★ 핵심 수정: 활성 자막(idx) 위에 직전 자막(idx-1) 하나만 보이게 스크롤
+                    // 활성 자막이 0번이 아닐 경우, 직전 자막(idx-1)을 맨 위로 스크롤함
+                    const targetIdx = idx > 0 ? idx - 1 : idx;
+                    const targetElem = subtitleListRef.current.children[targetIdx];
+                    if (targetElem) {
+                      targetElem.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }
                   }
                 }
               }} 
@@ -296,19 +302,16 @@
                   <div className={`flex-1 overflow-y-auto px-4 pb-10 space-y-2 ${isLightMode ? 'light-scrollbar' : 'custom-scrollbar'}`} ref={subtitleListRef}>
                     {subtitles.map((sub, index) => {
                       const isActive = index === currentSubtitleIndex;
-                      const inactiveColorClass = isLightMode ? 'text-black opacity-40' : 'text-neutral-500';
+                      const inactiveColorClass = isLightMode ? 'text-black opacity-100' : 'text-neutral-500';
                       const activeColorClass = isLightMode ? 'text-black font-semibold' : 'text-white font-normal';
 
                       return (
                         <div key={index} 
                           onClick={() => handleSubtitleClick(index, sub.start)}
-                          /* 재생 중인 자막 배경 투명(bg-transparent) 처리 */
                           className={`p-4 rounded-xl cursor-pointer transition border ${isActive ? (isLightMode ? 'bg-transparent border-yellow-400 shadow-sm' : 'bg-transparent border-neutral-500 shadow-lg shadow-blue-900/10') : 'border-transparent'}`}
                         >
                           <div className={`text-xs font-mono mb-1 ${isActive ? (isLightMode ? 'text-yellow-700' : 'text-yellow-500') : 'text-neutral-500'}`}>{formatTime(sub.start)}</div>
-                          {/* 1. 활성 자막 폰트 크기 상향 (기존 대비 5% 상향 수치 유지)
-                              2. 비활성 자막 폰트 크기 상향 (기존 text-sm/base -> text-base/lg 로 상향) */}
-                          <div className={`whitespace-pre-line leading-relaxed transition-all duration-300 ${isActive ? `text-[25.2px] md:text-[31.5px] ${activeColorClass}` : `text-base md:text-lg ${inactiveColorClass}`}`}>
+                          <div className={`whitespace-pre-line leading-relaxed transition-all duration-300 ${isActive ? `text-[25.2px] md:text-[31.5px] ${activeColorClass}` : `text-[16.8px] md:text-[20px] ${inactiveColorClass}`}`}>
                             {sub.text}
                           </div>
                         </div>

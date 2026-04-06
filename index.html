@@ -19,10 +19,18 @@
     .light-scrollbar::-webkit-scrollbar-track { background: transparent; }
     .light-scrollbar::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 10px; }
 
-    .no-scroll { overflow: hidden; }
-    
-    /* 아이폰 등 노치 디자인 대응 */
-    .safe-top { padding-top: env(safe-area-inset-top); }
+    /* 리스트 모드에서 바디 스크롤 방지 */
+    .no-scroll { 
+      overflow: hidden; 
+      position: fixed; 
+      width: 100%; 
+      height: 100%; 
+    }
+
+    /* iOS Safe Area 및 상단 여백 강제 확보 */
+    .header-safe-area {
+      padding-top: max(1.5rem, env(safe-area-inset-top));
+    }
   </style>
 </head>
 <body class="bg-[#171717] text-white m-0 p-0 font-sans">
@@ -31,6 +39,7 @@
   <script type="text/babel">
     const { useState, useRef, useEffect, useCallback } = React;
 
+    // IndexedDB 관련 로직 (기존과 동일)
     const DB_NAME = "AudioPlayerDB";
     const DB_VERSION = 1;
     const STORE_NAME = "mediaFiles";
@@ -172,9 +181,10 @@
       };
 
       return (
-        <div className={`flex flex-col items-center w-full safe-top ${showSubtitleList ? 'h-screen' : 'min-h-screen p-4 md:p-8'}`}>
-          <div className={`w-full max-w-4xl flex flex-col ${showSubtitleList ? 'h-full p-4' : 'space-y-6'}`}>
+        <div className={`flex flex-col items-center w-full ${showSubtitleList ? 'h-screen overflow-hidden' : 'min-h-screen p-4 md:p-8'}`}>
+          <div className={`w-full max-w-4xl flex flex-col ${showSubtitleList ? 'h-full' : 'space-y-6'}`}>
             
+            {/* 플레이어 모드 (리스트가 닫혔을 때) */}
             {!showSubtitleList && (
               <React.Fragment>
                 <div className="bg-neutral-800 rounded-2xl p-6 shadow-xl border border-neutral-700 mt-8">
@@ -236,13 +246,7 @@
                       </div>
                       <div className="flex items-center gap-1 bg-neutral-900 p-1.5 rounded-xl border border-neutral-700 overflow-x-auto">
                         {[0.8, 1, 1.1, 1.2, 1.3].map(rate => (
-                          <button 
-                            key={rate} 
-                            onClick={() => setPlaybackRate(rate)} 
-                            className={`px-3 py-2 text-sm font-bold rounded-lg transition min-w-[44px] ${playbackRate === rate ? 'bg-blue-500 text-white shadow-md' : 'bg-neutral-800 text-neutral-400 hover:bg-neutral-700'}`}
-                          >
-                            {rate === 1 ? '1.0' : rate}x
-                          </button>
+                          <button key={rate} onClick={() => setPlaybackRate(rate)} className={`px-3 py-2 text-sm font-bold rounded-lg transition min-w-[44px] ${playbackRate === rate ? 'bg-blue-500 text-white shadow-md' : 'bg-neutral-800 text-neutral-400'}`}>{rate}x</button>
                         ))}
                       </div>
                     </div>
@@ -273,10 +277,12 @@
               onEnded={() => setIsPlaying(false)} className="hidden" 
             />
 
+            {/* 리스트 모드 (전체 화면 확대) */}
             {subtitles.length > 0 && (
-              <div className={`flex flex-col transition-all duration-300 ${showSubtitleList ? 'flex-1 h-full rounded-none md:rounded-2xl' : 'rounded-2xl p-6 mb-8 h-auto'} border ${isLightMode && showSubtitleList ? 'bg-white border-gray-300 shadow-none' : 'bg-neutral-800 border-neutral-700 shadow-xl'}`}>
-                {/* 헤더 부분: mt-2(또는 상단 여백)를 추가하여 아이콘 가려짐 방지 */}
-                <div className={`flex justify-between items-center mb-4 border-b pb-2 px-2 pt-2 ${isLightMode && showSubtitleList ? 'border-gray-200' : 'border-neutral-700'}`}>
+              <div className={`flex flex-col transition-all duration-300 ${showSubtitleList ? 'flex-1 h-full rounded-none' : 'rounded-2xl p-6 mb-8 h-auto'} border ${isLightMode && showSubtitleList ? 'bg-white border-gray-300' : 'bg-[#171717] border-neutral-700'}`}>
+                
+                {/* 리스트 헤더 영역: header-safe-area 클래스로 상단 여백 강제 부여 */}
+                <div className={`flex justify-between items-center mb-4 border-b pb-4 px-4 header-safe-area ${isLightMode && showSubtitleList ? 'border-gray-200' : 'border-neutral-700'}`}>
                   <h2 className={`text-lg font-bold flex items-center gap-2 ${isLightMode && showSubtitleList ? 'text-gray-800' : 'text-neutral-200'}`}>
                     <Icon name="list" className="w-5 h-5 mr-2" /> List
                   </h2>
@@ -293,7 +299,7 @@
                 </div>
 
                 {showSubtitleList && (
-                  <div className={`flex-1 overflow-y-auto pr-2 px-2 space-y-2 ${isLightMode ? 'light-scrollbar' : 'custom-scrollbar'}`} ref={subtitleListRef}>
+                  <div className={`flex-1 overflow-y-auto px-4 pb-10 space-y-2 ${isLightMode ? 'light-scrollbar' : 'custom-scrollbar'}`} ref={subtitleListRef}>
                     {subtitles.map((sub, index) => {
                       const isActive = index === currentSubtitleIndex;
                       return (

@@ -11,13 +11,11 @@
   <script src="https://unpkg.com/feather-icons"></script>
 
   <style>
-    /* 다크 모드 스크롤바 */
     .custom-scrollbar::-webkit-scrollbar { width: 8px; }
     .custom-scrollbar::-webkit-scrollbar-track { background: #262626; border-radius: 4px; }
     .custom-scrollbar::-webkit-scrollbar-thumb { background: #525252; border-radius: 4px; }
     .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #737373; }
 
-    /* 라이트 모드 스크롤바 */
     .light-scrollbar::-webkit-scrollbar { width: 8px; }
     .light-scrollbar::-webkit-scrollbar-track { background: #f3f4f6; border-radius: 4px; }
     .light-scrollbar::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
@@ -28,9 +26,9 @@
   <div id="root"></div>
 
   <script type="text/babel">
-    const { useState, useRef, useEffect } = React;
+    const { useState, useRef, useEffect, useCallback } = React;
 
-    // --- 브라우저 DB(IndexedDB) 설정 (마지막 파일 저장용) ---
+    // --- IndexedDB 설정 ---
     const DB_NAME = "AudioPlayerDB";
     const DB_VERSION = 1;
     const STORE_NAME = "mediaFiles";
@@ -40,9 +38,7 @@
         const request = indexedDB.open(DB_NAME, DB_VERSION);
         request.onupgradeneeded = (e) => {
           const db = e.target.result;
-          if (!db.objectStoreNames.contains(STORE_NAME)) {
-            db.createObjectStore(STORE_NAME);
-          }
+          if (!db.objectStoreNames.contains(STORE_NAME)) db.createObjectStore(STORE_NAME);
         };
         request.onsuccess = (e) => resolve(e.target.result);
         request.onerror = (e) => reject(e.target.error);
@@ -51,43 +47,22 @@
 
     const saveToDB = async (key, file) => {
       const db = await initDB();
-      return new Promise((resolve, reject) => {
-        const tx = db.transaction(STORE_NAME, "readwrite");
-        const store = tx.objectStore(STORE_NAME);
-        store.put(file, key);
-        tx.oncomplete = () => resolve();
-        tx.onerror = () => reject(tx.error);
-      });
+      const tx = db.transaction(STORE_NAME, "readwrite");
+      tx.objectStore(STORE_NAME).put(file, key);
     };
 
     const loadFromDB = async (key) => {
       const db = await initDB();
-      return new Promise((resolve, reject) => {
-        const tx = db.transaction(STORE_NAME, "readonly");
-        const store = tx.objectStore(STORE_NAME);
-        const request = store.get(key);
+      return new Promise((resolve) => {
+        const request = db.transaction(STORE_NAME, "readonly").objectStore(STORE_NAME).get(key);
         request.onsuccess = () => resolve(request.result);
-        request.onerror = () => reject(request.error);
       });
     };
-    // -----------------------------------------------------
 
     const Icon = ({ name, className = "" }) => {
       if (!window.feather || !window.feather.icons[name]) return null;
       const svgString = window.feather.icons[name].toSvg({ class: className });
       return <span dangerouslySetInnerHTML={{ __html: svgString }} className="flex items-center justify-center" />;
-    };
-
-    const timeToSeconds = (timeStr) => {
-      if (!timeStr) return 0;
-      const parts = timeStr.replace(',', '.').split(':');
-      if (parts.length === 3) {
-        const hours = parseInt(parts[0], 10);
-        const minutes = parseInt(parts[1], 10);
-        const seconds = parseFloat(parts[2]);
-        return hours * 3600 + minutes * 60 + seconds;
-      }
-      return 0;
     };
 
     const formatTime = (totalSeconds) => {
@@ -96,34 +71,21 @@
       const m = Math.floor((totalSeconds % 3600) / 60);
       const s = Math.floor(totalSeconds % 60);
       const ms = Math.floor((totalSeconds % 1) * 100);
-      
-      if (h > 0) {
-        return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-      }
+      if (h > 0) return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
       return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}.${ms.toString().padStart(2, '0')}`;
     };
 
     const parseSRT = (srtText) => {
-      const blocks = srtText.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim().split(/\n\s*\n/);
-      const parsed = [];
-      blocks.forEach((block) => {
+      const timeToSeconds = (t) => {
+        const parts = t.replace(',', '.').split(':');
+        return parts.length === 3 ? parseInt(parts[0])*3600 + parseInt(parts[1])*60 + parseFloat(parts[2]) : 0;
+      };
+      return srtText.replace(/\r/g, '').trim().split(/\n\s*\n/).map(block => {
         const lines = block.split('\n');
-        if (lines.length >= 3) {
-          const id = lines[0];
-          const timecode = lines[1];
-          const text = lines.slice(2).join('\n');
-          const timeParts = timecode.split(' --> ');
-          if (timeParts.length === 2) {
-            parsed.push({
-              id,
-              start: timeToSeconds(timeParts[0]),
-              end: timeToSeconds(timeParts[1]),
-              text
-            });
-          }
-        }
-      });
-      return parsed;
+        if (lines.length < 3) return null;
+        const [start, end] = lines[1].split(' --> ');
+        return { id: lines[0], start: timeToSeconds(start), end: timeToSeconds(end), text: lines.slice(2).join('\n') };
+      }).filter(Boolean);
     };
 
     function App() {
@@ -134,226 +96,72 @@
       const [audioFileName, setAudioFileName] = useState("");
       const [subtitles, setSubtitles] = useState([]);
       const [srtFileName, setSrtFileName] = useState("");
-      
       const [isPlaying, setIsPlaying] = useState(false);
       const [currentTime, setCurrentTime] = useState(0);
       const [duration, setDuration] = useState(0);
-      
       const [currentSubtitleIndex, setCurrentSubtitleIndex] = useState(-1);
-      
       const [pointA, setPointA] = useState(null);
       const [pointB, setPointB] = useState(null);
       const [isRepeatActive, setIsRepeatActive] = useState(false);
-
       const [showSubtitleList, setShowSubtitleList] = useState(false);
       const [playbackRate, setPlaybackRate] = useState(1.0);
-      
       const [showUploader, setShowUploader] = useState(true);
       const [isLightMode, setIsLightMode] = useState(false);
 
-      // --- 컴포넌트 로드 시 IndexedDB에서 마지막 파일 불러오기 ---
       useEffect(() => {
-        const loadLastFiles = async () => {
-          try {
-            const lastAudio = await loadFromDB('lastAudio');
-            if (lastAudio) {
-              const url = URL.createObjectURL(lastAudio);
-              setAudioSrc(url);
-              setAudioFileName(lastAudio.name);
-              setShowUploader(false); 
-            }
-
-            const lastSrt = await loadFromDB('lastSrt');
-            if (lastSrt) {
-              setSrtFileName(lastSrt.name);
-              const reader = new FileReader();
-              reader.onload = (event) => {
-                if (typeof event.target?.result === 'string') {
-                  const parsed = parseSRT(event.target.result);
-                  setSubtitles(parsed);
-                }
-              };
-              reader.readAsText(lastSrt, 'utf-8');
-            }
-          } catch (error) {
-            console.error("이전 파일을 불러오는 중 오류가 발생했습니다.", error);
+        const load = async () => {
+          const lastAudio = await loadFromDB('lastAudio');
+          if (lastAudio) { setAudioSrc(URL.createObjectURL(lastAudio)); setAudioFileName(lastAudio.name); setShowUploader(false); }
+          const lastSrt = await loadFromDB('lastSrt');
+          if (lastSrt) {
+            setSrtFileName(lastSrt.name);
+            const reader = new FileReader();
+            reader.onload = (e) => setSubtitles(parseSRT(e.target.result));
+            reader.readAsText(lastSrt, 'utf-8');
           }
         };
-        
-        loadLastFiles();
+        load();
       }, []);
 
-      useEffect(() => {
-        if (audioRef.current) {
-          audioRef.current.playbackRate = playbackRate;
-        }
-      }, [audioSrc, playbackRate]);
-
-      const handleAudioUpload = async (e) => {
-        const files = Array.from(e.target.files || []);
-        if (files.length === 0) return;
-
-        let audioFile = null;
-        let srtFile = null;
-
-        files.forEach(file => {
-          if (file.type.startsWith('audio/') || file.name.match(/\.(mp3|wav|m4a|ogg|aac|flac)$/i)) {
-            audioFile = file;
-          } else if (file.name.match(/\.srt$/i)) {
-            srtFile = file;
-          }
-        });
-
-        if (audioFile) {
-          const url = URL.createObjectURL(audioFile);
-          setAudioSrc(url);
-          setAudioFileName(audioFile.name);
-          setIsPlaying(false);
-          resetState();
-          await saveToDB('lastAudio', audioFile);
-          setShowUploader(false); 
-
-          localStorage.setItem('lastSavedTime', '0');
-        }
-
-        if (srtFile) {
-          setSrtFileName(srtFile.name);
-          const reader = new FileReader();
-          reader.onload = async (event) => {
-            if (typeof event.target?.result === 'string') {
-              const parsed = parseSRT(event.target.result);
-              setSubtitles(parsed);
-              await saveToDB('lastSrt', srtFile);
-            }
-          };
-          reader.readAsText(srtFile, 'utf-8');
-        }
-      };
-
-      const handleSrtUpload = async (e) => {
-        const file = e.target.files?.[0];
-        if (file) {
-          setSrtFileName(file.name);
-          const reader = new FileReader();
-          reader.onload = async (event) => {
-            if (typeof event.target?.result === 'string') {
-              const parsed = parseSRT(event.target.result);
-              setSubtitles(parsed);
-              await saveToDB('lastSrt', file);
-            }
-          };
-          reader.readAsText(file, 'utf-8');
-        }
-      };
-
-      const resetState = () => {
-        setPointA(null);
-        setPointB(null);
-        setIsRepeatActive(false);
-        setCurrentSubtitleIndex(-1);
-      };
-
-      const togglePlay = () => {
+      const togglePlay = useCallback(() => {
         if (!audioRef.current || !audioSrc) return;
-        if (isPlaying) {
-          audioRef.current.pause();
-        } else {
-          audioRef.current.play();
-        }
+        if (isPlaying) audioRef.current.pause();
+        else audioRef.current.play();
         setIsPlaying(!isPlaying);
-      };
+      }, [isPlaying, audioSrc]);
 
-      const handleTimeUpdate = () => {
-        if (!audioRef.current) return;
-        const time = audioRef.current.currentTime;
-        setCurrentTime(time);
-
-        const currentSecond = Math.floor(time);
-        const savedSecond = parseInt(localStorage.getItem('lastSavedTime') || '0', 10);
-        if (currentSecond !== savedSecond) {
-          localStorage.setItem('lastSavedTime', currentSecond.toString());
-        }
-
-        if (isRepeatActive && pointA !== null && pointB !== null) {
-          if (time >= pointB) {
-            audioRef.current.currentTime = pointA;
-            if (audioRef.current.paused) {
-              audioRef.current.play();
-              setIsPlaying(true);
-            }
-          }
-        }
-
-        if (subtitles.length > 0) {
-          const activeIndex = subtitles.findIndex(sub => time >= sub.start && time <= sub.end);
-          if (activeIndex !== currentSubtitleIndex) {
-            setCurrentSubtitleIndex(activeIndex);
-            
-            if (showSubtitleList && activeIndex !== -1 && subtitleListRef.current) {
-              const activeElement = subtitleListRef.current.children[activeIndex];
-              if (activeElement) {
-                activeElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-              }
-            }
-          }
-        }
-      };
-
-      const handleLoadedMetadata = () => {
-        if (audioRef.current) {
-          const currentDuration = audioRef.current.duration;
-          setDuration(currentDuration);
-
-          const savedTime = parseFloat(localStorage.getItem('lastSavedTime') || '0');
-          if (savedTime > 0 && savedTime < currentDuration) {
-            audioRef.current.currentTime = savedTime;
-            setCurrentTime(savedTime);
-          }
-        }
-      };
-
-      const handleSeek = (e) => {
-        const newTime = parseFloat(e.target.value);
-        if (audioRef.current) {
-          audioRef.current.currentTime = newTime;
-          setCurrentTime(newTime);
-        }
-      };
-
-      const seekToTime = (time) => {
-        if (audioRef.current) {
-          audioRef.current.currentTime = time;
-          setCurrentTime(time);
-          if (!isPlaying) {
+      const handleSubtitleClick = (index, subStart) => {
+        if (index === currentSubtitleIndex) {
+          togglePlay(); // 현재 재생 중인 자막 터치 시 재생/일시정지
+        } else {
+          if (audioRef.current) {
+            audioRef.current.currentTime = subStart;
+            setCurrentTime(subStart);
             audioRef.current.play();
             setIsPlaying(true);
           }
         }
       };
 
-      const setA = () => setPointA(currentTime);
-      const setB = () => {
-        if (pointA !== null && currentTime > pointA) {
-          setPointB(currentTime);
-          setIsRepeatActive(true);
-        } else {
-          alert("B 지점은 A 지점보다 뒤에 있어야 합니다.");
+      const handleAudioUpload = async (e) => {
+        const files = Array.from(e.target.files || []);
+        let audioFile = files.find(f => f.type.startsWith('audio/') || f.name.match(/\.(mp3|wav|m4a|ogg|aac|flac)$/i));
+        let srtFile = files.find(f => f.name.match(/\.srt$/i));
+        
+        if (audioFile) {
+          setAudioSrc(URL.createObjectURL(audioFile));
+          setAudioFileName(audioFile.name);
+          setIsPlaying(false);
+          setPointA(null); setPointB(null); setIsRepeatActive(false);
+          await saveToDB('lastAudio', audioFile);
+          setShowUploader(false);
+          localStorage.setItem('lastSavedTime', '0');
         }
-      };
-      const clearAB = () => {
-        setPointA(null);
-        setPointB(null);
-        setIsRepeatActive(false);
-      };
-      const toggleRepeat = () => {
-        if (pointA !== null && pointB !== null) {
-          setIsRepeatActive(!isRepeatActive);
-        }
-      };
-
-      const skip = (amount) => {
-        if (audioRef.current) {
-          audioRef.current.currentTime += amount;
+        if (srtFile) {
+          setSrtFileName(srtFile.name);
+          const reader = new FileReader();
+          reader.onload = async (ev) => { setSubtitles(parseSRT(ev.target.result)); await saveToDB('lastSrt', srtFile); };
+          reader.readAsText(srtFile, 'utf-8');
         }
       };
 
@@ -361,247 +169,127 @@
         <div className="min-h-screen flex flex-col items-center w-full p-4 md:p-8">
           <div className="w-full max-w-4xl space-y-6">
             
-            {/* ★ 미디어 파일 로드 섹션 (전체 자막 리스트가 열려있을 때는 완전히 숨김) */}
+            {/* 자막 리스트가 닫혀있을 때만 표시 */}
             {!showSubtitleList && (
-              <div className="bg-neutral-800 rounded-2xl p-6 shadow-xl border border-neutral-700 mt-8 transition-all duration-300">
-                <div className={`flex justify-between items-center ${showUploader ? 'mb-6' : ''}`}>
-                  <h1 className="text-xl md:text-2xl font-bold flex items-center gap-2 text-blue-400">
-                    <Icon name={showUploader ? "folder-plus" : "disc"} className="w-6 h-6 mr-1" /> 
-                    {showUploader ? "미디어 파일 로드" : "재생 중인 미디어"}
-                  </h1>
-                  
-                  <button 
-                    onClick={() => setShowUploader(!showUploader)}
-                    className="flex items-center gap-2 px-3 py-1.5 bg-neutral-700 hover:bg-neutral-600 active:bg-neutral-500 rounded-lg text-sm font-medium text-neutral-200 transition"
-                  >
-                    <Icon name={showUploader ? "chevron-up" : "chevron-down"} className="w-4 h-4" />
-                    {showUploader ? "접기" : "다른 파일 열기"}
-                  </button>
-                </div>
-                
-                {showUploader ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <label className="relative border-2 border-dashed border-neutral-600 rounded-xl p-4 hover:bg-neutral-700/50 transition flex flex-col items-center justify-center cursor-pointer h-32 group">
-                      <input type="file" accept="audio/*,.srt" multiple onChange={handleAudioUpload} className="hidden" />
-                      <Icon name="music" className="w-8 h-8 mb-2 text-neutral-400 group-hover:text-blue-400 transition" />
-                      <span className="text-sm font-medium text-center text-neutral-300 px-2 line-clamp-2">
-                        {audioFileName ? audioFileName : "오디오 선택 (자막과 함께 다중 선택 가능)"}
-                      </span>
-                    </label>
-
-                    <label className="relative border-2 border-dashed border-neutral-600 rounded-xl p-4 hover:bg-neutral-700/50 transition flex flex-col items-center justify-center cursor-pointer h-32 group">
-                      <input type="file" accept=".srt" onChange={handleSrtUpload} className="hidden" />
-                      <Icon name="file-text" className="w-8 h-8 mb-2 text-neutral-400 group-hover:text-green-400 transition" />
-                      <span className="text-sm font-medium text-center text-neutral-300 px-2 line-clamp-2">
-                        {srtFileName ? srtFileName : "SRT 자막 파일 선택"}
-                      </span>
-                    </label>
+              <React.Fragment>
+                <div className="bg-neutral-800 rounded-2xl p-6 shadow-xl border border-neutral-700 mt-8">
+                  <div className={`flex justify-between items-center ${showUploader ? 'mb-6' : ''}`}>
+                    <h1 className="text-xl md:text-2xl font-bold flex items-center gap-2 text-blue-400">
+                      <Icon name={showUploader ? "folder-plus" : "disc"} className="w-6 h-6 mr-1" /> 
+                      {showUploader ? "Load Media" : "Media"}
+                    </h1>
+                    <button onClick={() => setShowUploader(!showUploader)} className="flex items-center gap-2 px-3 py-1.5 bg-neutral-700 hover:bg-neutral-600 rounded-lg text-sm font-medium transition">
+                      <Icon name={showUploader ? "chevron-up" : "chevron-down"} className="w-4 h-4" />
+                      {showUploader ? "Close" : "Open"}
+                    </button>
                   </div>
-                ) : (
-                  <div className="flex flex-col md:flex-row gap-4 mt-4 text-sm text-neutral-400 bg-neutral-900/50 p-4 rounded-xl border border-neutral-700/50">
-                    <div className="flex items-center gap-2 flex-1 min-w-0">
-                      <Icon name="music" className="w-4 h-4 shrink-0 text-blue-400" /> 
-                      <span className="truncate">{audioFileName || "선택된 오디오가 없습니다."}</span>
+                  {showUploader ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <label className="border-2 border-dashed border-neutral-600 rounded-xl p-4 hover:bg-neutral-700/50 transition flex flex-col items-center justify-center cursor-pointer h-32 group">
+                        <input type="file" accept="audio/*,.srt" multiple onChange={handleAudioUpload} className="hidden" />
+                        <Icon name="music" className="w-8 h-8 mb-2 text-neutral-400 group-hover:text-blue-400" />
+                        <span className="text-sm text-neutral-300 truncate w-full text-center">{audioFileName || "Select Audio"}</span>
+                      </label>
+                      <label className="border-2 border-dashed border-neutral-600 rounded-xl p-4 hover:bg-neutral-700/50 transition flex flex-col items-center justify-center cursor-pointer h-32 group">
+                        <input type="file" accept=".srt" onChange={(e) => {
+                          const f = e.target.files[0];
+                          if(f){ setSrtFileName(f.name); const r = new FileReader(); r.onload=async(ev)=>{setSubtitles(parseSRT(ev.target.result)); await saveToDB('lastSrt', f);}; r.readAsText(f, 'utf-8');}
+                        }} className="hidden" />
+                        <Icon name="file-text" className="w-8 h-8 mb-2 text-neutral-400 group-hover:text-green-400" />
+                        <span className="text-sm text-neutral-300 truncate w-full text-center">{srtFileName || "Select SRT"}</span>
+                      </label>
                     </div>
-                    <div className="flex items-center gap-2 flex-1 min-w-0">
-                      <Icon name="file-text" className="w-4 h-4 shrink-0 text-green-400" /> 
-                      <span className="truncate">{srtFileName || "선택된 자막이 없습니다."}</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* 플레이어 영역 */}
-            <div className={`bg-neutral-800 rounded-2xl p-6 shadow-xl border border-neutral-700 ${showSubtitleList ? 'mt-8' : ''}`}>
-              <audio 
-                ref={audioRef}
-                src={audioSrc || undefined}
-                onTimeUpdate={handleTimeUpdate}
-                onLoadedMetadata={handleLoadedMetadata}
-                onEnded={() => setIsPlaying(false)}
-                className="hidden"
-              />
-
-              {/* 리스트가 닫혀있을 때만 표시되는 상단 자막창 */}
-              {!showSubtitleList && (
-                <div className="min-h-[140px] bg-neutral-900 rounded-xl p-6 flex items-center justify-center text-center mb-6 border border-neutral-700 shadow-inner">
-                  {currentSubtitleIndex !== -1 && subtitles[currentSubtitleIndex] ? (
-                    <p className="text-2xl md:text-3xl font-normal leading-relaxed tracking-wide text-white whitespace-pre-line drop-shadow-md transition-all duration-200">
-                      {subtitles[currentSubtitleIndex].text}
-                    </p>
                   ) : (
-                    <p className="text-lg text-neutral-500 whitespace-pre-line">
-                      {audioSrc ? "자막이 없는 구간입니다." : "오디오와 자막 파일을 업로드 해주세요."}
-                    </p>
+                    <div className="flex flex-col md:flex-row gap-4 mt-4 text-sm text-neutral-400 bg-neutral-900/50 p-4 rounded-xl border border-neutral-700/50">
+                      <div className="flex items-center gap-2 flex-1 min-w-0"><Icon name="music" className="w-4 h-4 text-blue-400" /><span className="truncate">{audioFileName}</span></div>
+                      <div className="flex items-center gap-2 flex-1 min-w-0"><Icon name="file-text" className="w-4 h-4 text-green-400" /><span className="truncate">{srtFileName}</span></div>
+                    </div>
                   )}
                 </div>
-              )}
 
-              {/* 진행바 */}
-              <div className="relative w-full h-3 bg-neutral-700 rounded-full mb-2 cursor-pointer group">
-                <input 
-                  type="range" min="0" max={duration || 100} value={currentTime} onChange={handleSeek}
-                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" disabled={!audioSrc}
-                />
-                <div className="absolute top-0 left-0 h-full bg-blue-500 rounded-full pointer-events-none" style={{ width: `${duration ? (currentTime / duration) * 100 : 0}%` }}></div>
-                
-                {pointA !== null && duration > 0 && <div className="absolute top-[-4px] w-1.5 h-5 bg-green-400 z-0 rounded-full shadow-[0_0_8px_rgba(74,222,128,0.8)]" style={{ left: `${(pointA / duration) * 100}%` }} title="A 지점" />}
-                {pointB !== null && duration > 0 && <div className="absolute top-[-4px] w-1.5 h-5 bg-red-400 z-0 rounded-full shadow-[0_0_8px_rgba(248,113,113,0.8)]" style={{ left: `${(pointB / duration) * 100}%` }} title="B 지점" />}
-                {pointA !== null && pointB !== null && duration > 0 && isRepeatActive && (
-                  <div className="absolute top-0 h-full bg-blue-400/40 z-0 pointer-events-none" style={{ left: `${(pointA / duration) * 100}%`, width: `${((pointB - pointA) / duration) * 100}%` }} />
-                )}
-              </div>
-
-              <div className="flex justify-between text-xs text-neutral-400 font-mono mb-8 px-1">
-                <span>{formatTime(currentTime)}</span>
-                <span>{formatTime(duration)}</span>
-              </div>
-
-              {/* 하단 컨트롤 영역 */}
-              <div className="flex flex-col gap-6">
-                
-                {/* 윗줄: 재생 앞/뒤 조작 + 배속 버튼 */}
-                <div className="flex flex-col md:flex-row items-center justify-between gap-6">
-                  
-                  {/* 기본 재생 컨트롤 */}
-                  <div className="flex items-center justify-center gap-3 w-full md:w-auto">
-                    <button onClick={() => skip(-5)} disabled={!audioSrc} className="p-2 text-neutral-400 hover:text-white disabled:opacity-50 transition">
-                      <Icon name="rotate-ccw" className="w-5 h-5" />
-                    </button>
-                    
-                    <button 
-                      onClick={togglePlay} 
-                      disabled={!audioSrc} 
-                      className="w-12 h-12 bg-blue-500 text-white flex items-center justify-center hover:bg-blue-600 disabled:opacity-50 disabled:bg-neutral-600 shadow-md shadow-blue-500/20 transition-all duration-300 transform active:scale-95 rounded-full"
-                    >
-                      {isPlaying ? (
-                        <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
-                          <rect x="7" y="6" width="3" height="12" rx="1" />
-                          <rect x="14" y="6" width="3" height="12" rx="1" />
-                        </svg>
-                      ) : (
-                        <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 ml-1" stroke="currentColor" strokeWidth="1" strokeLinejoin="round">
-                          <path d="M7 5l12 7-12 7z" />
-                        </svg>
-                      )}
-                    </button>
-
-                    <button onClick={() => skip(5)} disabled={!audioSrc} className="p-2 text-neutral-400 hover:text-white disabled:opacity-50 transition transform -scale-x-100">
-                      <Icon name="rotate-ccw" className="w-5 h-5" />
-                    </button>
+                <div className="bg-neutral-800 rounded-2xl p-6 shadow-xl border border-neutral-700">
+                  <div className="min-h-[140px] bg-neutral-900 rounded-xl p-6 flex items-center justify-center text-center mb-6 border border-neutral-700">
+                    {currentSubtitleIndex !== -1 && subtitles[currentSubtitleIndex] ? (
+                      <p className="text-2xl md:text-3xl font-normal text-white whitespace-pre-line">{subtitles[currentSubtitleIndex].text}</p>
+                    ) : (
+                      <p className="text-lg text-neutral-500">{audioSrc ? "No Subtitle" : "Upload Files"}</p>
+                    )}
                   </div>
-
-                  {/* 배속 선택 버튼 */}
-                  <div className="flex items-center justify-center gap-1.5 bg-neutral-900 p-2 rounded-xl border border-neutral-700 w-full md:w-auto shadow-inner overflow-x-auto">
-                    <span className="text-neutral-500 text-sm font-bold mr-1 shrink-0">배속:</span>
-                    {[0.8, 1.0, 1.1, 1.2, 1.4].map((rate) => (
-                      <button
-                        key={rate}
-                        onClick={() => setPlaybackRate(rate)}
-                        disabled={!audioSrc}
-                        className={`px-3 py-2 text-sm font-bold rounded-lg transition-all shrink-0 ${
-                          playbackRate === rate 
-                            ? 'bg-blue-500 text-white shadow-[0_0_10px_rgba(59,130,246,0.5)]' 
-                            : 'bg-neutral-800 text-neutral-400 hover:bg-neutral-700 hover:text-white disabled:opacity-50'
-                        }`}
-                      >
-                        {rate}x
-                      </button>
-                    ))}
+                  <div className="relative w-full h-3 bg-neutral-700 rounded-full mb-2">
+                    <input type="range" min="0" max={duration || 100} value={currentTime} onChange={(e) => { const v=parseFloat(e.target.value); audioRef.current.currentTime=v; setCurrentTime(v); }} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
+                    <div className="absolute top-0 left-0 h-full bg-blue-500 rounded-full" style={{ width: `${duration ? (currentTime / duration) * 100 : 0}%` }}></div>
+                  </div>
+                  <div className="flex justify-between text-xs text-neutral-400 font-mono mb-8 px-1"><span>{formatTime(currentTime)}</span><span>{formatTime(duration)}</span></div>
+                  <div className="flex flex-col gap-6">
+                    <div className="flex flex-col md:flex-row items-center justify-between gap-6">
+                      <div className="flex items-center gap-3">
+                        <button onClick={() => audioRef.current.currentTime -= 5} className="p-2 text-neutral-400 hover:text-white"><Icon name="rotate-ccw" className="w-5 h-5" /></button>
+                        <button onClick={togglePlay} className="w-12 h-12 bg-blue-500 rounded-full flex items-center justify-center shadow-lg active:scale-95 transition">
+                          {isPlaying ? <Icon name="pause" className="w-5 h-5" /> : <Icon name="play" className="w-5 h-5 ml-1" />}
+                        </button>
+                        <button onClick={() => audioRef.current.currentTime += 5} className="p-2 text-neutral-400 hover:text-white transform -scale-x-100"><Icon name="rotate-ccw" className="w-5 h-5" /></button>
+                      </div>
+                      <div className="flex items-center gap-1.5 bg-neutral-900 p-2 rounded-xl border border-neutral-700">
+                        {[0.8, 1.0, 1.2, 1.4].map(rate => (
+                          <button key={rate} onClick={() => setPlaybackRate(rate)} className={`px-3 py-2 text-sm font-bold rounded-lg transition ${playbackRate === rate ? 'bg-blue-500 text-white' : 'bg-neutral-800 text-neutral-400'}`}>{rate}x</button>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                 </div>
+              </React.Fragment>
+            )}
 
-                {/* 구간 반복 컨트롤 (리스트가 닫혀있을 때만 표시) */}
-                {!showSubtitleList && (
-                  <div className="flex items-center justify-center md:justify-end gap-2 bg-neutral-900 p-2 rounded-xl border border-neutral-700 w-full">
-                    <button onClick={setA} disabled={!audioSrc} className={`px-4 py-2 text-sm font-bold rounded-lg transition flex items-center gap-1 ${pointA !== null ? 'bg-green-500/20 text-green-400' : 'bg-neutral-800 text-neutral-300 hover:bg-neutral-700'}`}>
-                      A {pointA !== null && <span className="text-xs font-normal">({formatTime(pointA)})</span>}
-                    </button>
-                    
-                    <button onClick={setB} disabled={!audioSrc || pointA === null} className={`px-4 py-2 text-sm font-bold rounded-lg transition flex items-center gap-1 ${pointB !== null ? 'bg-red-500/20 text-red-400' : 'bg-neutral-800 text-neutral-300 hover:bg-neutral-700'}`}>
-                      B {pointB !== null && <span className="text-xs font-normal">({formatTime(pointB)})</span>}
-                    </button>
+            <audio ref={audioRef} src={audioSrc || undefined} 
+              onTimeUpdate={() => {
+                const t = audioRef.current.currentTime;
+                setCurrentTime(t);
+                localStorage.setItem('lastSavedTime', Math.floor(t).toString());
+                if (isRepeatActive && t >= pointB) audioRef.current.currentTime = pointA;
+                const idx = subtitles.findIndex(s => t >= s.start && t <= s.end);
+                if (idx !== currentSubtitleIndex) {
+                  setCurrentSubtitleIndex(idx);
+                  if (showSubtitleList && idx !== -1 && subtitleListRef.current?.children[idx]) {
+                    subtitleListRef.current.children[idx].scrollIntoView({ behavior: 'smooth', block: 'center' });
+                  }
+                }
+              }} 
+              onLoadedMetadata={() => {
+                setDuration(audioRef.current.duration);
+                const saved = parseFloat(localStorage.getItem('lastSavedTime') || '0');
+                if (saved < audioRef.current.duration) audioRef.current.currentTime = saved;
+              }}
+              onEnded={() => setIsPlaying(false)} className="hidden" 
+            />
 
-                    <div className="w-px h-8 bg-neutral-700 mx-1"></div>
-
-                    <button onClick={toggleRepeat} disabled={pointA === null || pointB === null} className={`p-2 rounded-lg transition ${isRepeatActive ? 'bg-blue-500 text-white' : 'bg-neutral-800 text-neutral-400 hover:bg-neutral-700'}`}>
-                      <Icon name="repeat" className="w-5 h-5" />
-                    </button>
-
-                    <button onClick={clearAB} disabled={pointA === null && pointB === null} className="p-2 bg-neutral-800 text-neutral-400 rounded-lg hover:bg-neutral-700 hover:text-red-400 transition" title="구간 초기화">
-                      <Icon name="trash-2" className="w-5 h-5" />
-                    </button>
-                  </div>
-                )}
-
-              </div>
-            </div>
-
-            {/* 자막 리스트 */}
             {subtitles.length > 0 && (
-              /* ★ 화면 비율 단위(vh)를 사용하여 리스트 창 높이를 화면에 꽉 차게 극대화 */
-              <div className={`rounded-2xl p-6 shadow-xl border flex flex-col mb-8 transition-all duration-300 ${showSubtitleList ? 'h-[65vh] md:h-[75vh]' : 'h-auto'} ${isLightMode && showSubtitleList ? 'bg-white border-gray-300' : 'bg-neutral-800 border-neutral-700'}`}>
-                
-                {/* 헤더 부분 */}
+              <div className={`rounded-2xl p-6 shadow-xl border flex flex-col mb-8 transition-all duration-300 ${showSubtitleList ? 'h-[85vh] mt-8' : 'h-auto'} ${isLightMode && showSubtitleList ? 'bg-white border-gray-300' : 'bg-neutral-800 border-neutral-700'}`}>
                 <div className={`flex justify-between items-center mb-4 border-b pb-2 ${isLightMode && showSubtitleList ? 'border-gray-200' : 'border-neutral-700'}`}>
                   <h2 className={`text-lg font-bold flex items-center gap-2 ${isLightMode && showSubtitleList ? 'text-gray-800' : 'text-neutral-200'}`}>
-                    <Icon name="list" className={`w-5 h-5 mr-2 ${isLightMode && showSubtitleList ? 'text-gray-500' : 'text-neutral-400'}`} /> List
+                    <Icon name="list" className="w-5 h-5 mr-2" /> List
                   </h2>
                   <div className="flex items-center gap-2">
-                    {/* 라이트/다크 모드 전환 버튼 (리스트가 열려있을 때만 보임) */}
                     {showSubtitleList && (
-                      <button 
-                        onClick={() => setIsLightMode(!isLightMode)}
-                        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition ${isLightMode ? 'bg-gray-200 hover:bg-gray-300 text-gray-800' : 'bg-neutral-700 hover:bg-neutral-600 text-neutral-200'}`}
-                      >
-                        <Icon name={isLightMode ? "moon" : "sun"} className="w-4 h-4 mr-1" />
-                        {isLightMode ? "Dark" : "White"}
+                      <button onClick={() => setIsLightMode(!isLightMode)} className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${isLightMode ? 'bg-gray-200 text-gray-800' : 'bg-neutral-700 text-neutral-200'}`}>
+                        <Icon name={isLightMode ? "moon" : "sun"} className="w-4 h-4 mr-1" /> {isLightMode ? "Dark" : "Light"}
                       </button>
                     )}
-
-                    <button 
-                      onClick={() => setShowSubtitleList(!showSubtitleList)}
-                      className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition ${isLightMode && showSubtitleList ? 'bg-gray-200 hover:bg-gray-300 text-gray-800' : 'bg-neutral-700 hover:bg-neutral-600 active:bg-neutral-500 text-neutral-200'}`}
-                    >
-                      <Icon name={showSubtitleList ? "eye-off" : "eye"} className="w-4 h-4 mr-1" />
-                      {showSubtitleList ? "Close" : "Open"}
+                    <button onClick={() => setShowSubtitleList(!showSubtitleList)} className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${isLightMode && showSubtitleList ? 'bg-gray-200 text-gray-800' : 'bg-neutral-700 text-neutral-200'}`}>
+                      <Icon name={showSubtitleList ? "eye-off" : "eye"} className="w-4 h-4 mr-1" /> {showSubtitleList ? "Player" : "List"}
                     </button>
                   </div>
                 </div>
-                
-                {/* 리스트 본문 */}
                 {showSubtitleList && (
                   <div className={`flex-1 overflow-y-auto pr-2 space-y-2 ${isLightMode ? 'light-scrollbar' : 'custom-scrollbar'}`} ref={subtitleListRef}>
                     {subtitles.map((sub, index) => {
                       const isActive = index === currentSubtitleIndex;
                       return (
-                        <div 
-                          key={index}
-                          onClick={() => seekToTime(sub.start)}
-                          className={`p-3 rounded-xl cursor-pointer transition border ${
-                            isActive 
-                              ? (isLightMode 
-                                  ? 'bg-transparent border-transparent text-black shadow-[0_0_15px_rgba(234,179,8,0.3)]' 
-                                  : 'bg-transparent border-transparent text-white shadow-[0_0_15px_rgba(234,179,8,0.15)]')
-                              : (isLightMode 
-                                  ? 'border-transparent hover:bg-gray-100 text-gray-800' 
-                                  : 'border-transparent hover:bg-neutral-700/50 text-neutral-300')
-                          }`}
+                        <div key={index} 
+                          onClick={() => handleSubtitleClick(index, sub.start)}
+                          className={`p-3 rounded-xl cursor-pointer transition border ${isActive ? (isLightMode ? 'text-black shadow-lg shadow-yellow-100 border-yellow-200' : 'text-white shadow-lg shadow-blue-900/40 border-neutral-600') : 'border-transparent'}`}
                         >
-                          <div className={`text-xs font-mono mb-1 ${
-                            isActive 
-                              ? (isLightMode ? 'text-yellow-700' : 'text-yellow-500/70') 
-                              : (isLightMode ? 'text-gray-500' : 'text-neutral-500')
-                          }`}>
-                            {formatTime(sub.start)} - {formatTime(sub.end)}
-                          </div>
-                          {/* 자막 텍스트 부분: isActive에 따라 폰트 크기 조절 적용 */}
-                          <div className={`whitespace-pre-line leading-relaxed tracking-wide transition-all duration-300 ${
-                            isActive ? 'text-[22px] md:text-[27px] font-normal' : 'text-sm md:text-base font-normal'
-                          }`}>
-                            {sub.text}
-                          </div>
+                          <div className={`text-xs font-mono mb-1 ${isActive ? (isLightMode ? 'text-yellow-600' : 'text-yellow-500') : 'text-neutral-500'}`}>{formatTime(sub.start)}</div>
+                          <div className={`whitespace-pre-line leading-relaxed transition-all duration-300 ${isActive ? 'text-[22px] md:text-[27px]' : 'text-sm md:text-base'}`}>{sub.text}</div>
                         </div>
                       );
                     })}
@@ -609,7 +297,6 @@
                 )}
               </div>
             )}
-
           </div>
         </div>
       );

@@ -19,7 +19,6 @@
     .light-scrollbar::-webkit-scrollbar-track { background: transparent; }
     .light-scrollbar::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 10px; }
 
-    /* 리스트 모드에서 바디 스크롤 방지 */
     .no-scroll { 
       overflow: hidden; 
       position: fixed; 
@@ -27,7 +26,6 @@
       height: 100%; 
     }
 
-    /* iOS Safe Area 및 상단 여백 강제 확보 */
     .header-safe-area {
       padding-top: max(1.5rem, env(safe-area-inset-top));
     }
@@ -39,7 +37,6 @@
   <script type="text/babel">
     const { useState, useRef, useEffect, useCallback } = React;
 
-    // IndexedDB 관련 로직 (기존과 동일)
     const DB_NAME = "AudioPlayerDB";
     const DB_VERSION = 1;
     const STORE_NAME = "mediaFiles";
@@ -184,7 +181,6 @@
         <div className={`flex flex-col items-center w-full ${showSubtitleList ? 'h-screen overflow-hidden' : 'min-h-screen p-4 md:p-8'}`}>
           <div className={`w-full max-w-4xl flex flex-col ${showSubtitleList ? 'h-full' : 'space-y-6'}`}>
             
-            {/* 플레이어 모드 (리스트가 닫혔을 때) */}
             {!showSubtitleList && (
               <React.Fragment>
                 <div className="bg-neutral-800 rounded-2xl p-6 shadow-xl border border-neutral-700 mt-8">
@@ -277,11 +273,9 @@
               onEnded={() => setIsPlaying(false)} className="hidden" 
             />
 
-            {/* 리스트 모드 (전체 화면 확대) */}
             {subtitles.length > 0 && (
-              <div className={`flex flex-col transition-all duration-300 ${showSubtitleList ? 'flex-1 h-full rounded-none' : 'rounded-2xl p-6 mb-8 h-auto'} border ${isLightMode && showSubtitleList ? 'bg-white border-gray-300' : 'bg-[#171717] border-neutral-700'}`}>
+              <div className={`flex flex-col transition-all duration-300 ${showSubtitleList ? 'flex-1 h-full rounded-none' : 'rounded-2xl p-6 mb-8 h-auto'} border ${isLightMode && showSubtitleList ? 'bg-white border-gray-300 shadow-none' : 'bg-[#171717] border-neutral-700 shadow-xl'}`}>
                 
-                {/* 리스트 헤더 영역: header-safe-area 클래스로 상단 여백 강제 부여 */}
                 <div className={`flex justify-between items-center mb-4 border-b pb-4 px-4 header-safe-area ${isLightMode && showSubtitleList ? 'border-gray-200' : 'border-neutral-700'}`}>
                   <h2 className={`text-lg font-bold flex items-center gap-2 ${isLightMode && showSubtitleList ? 'text-gray-800' : 'text-neutral-200'}`}>
                     <Icon name="list" className="w-5 h-5 mr-2" /> List
@@ -302,13 +296,21 @@
                   <div className={`flex-1 overflow-y-auto px-4 pb-10 space-y-2 ${isLightMode ? 'light-scrollbar' : 'custom-scrollbar'}`} ref={subtitleListRef}>
                     {subtitles.map((sub, index) => {
                       const isActive = index === currentSubtitleIndex;
+                      const inactiveColorClass = isLightMode ? 'text-black opacity-40' : 'text-neutral-500';
+                      const activeColorClass = isLightMode ? 'text-black font-semibold' : 'text-white font-normal';
+
                       return (
                         <div key={index} 
                           onClick={() => handleSubtitleClick(index, sub.start)}
-                          className={`p-4 rounded-xl cursor-pointer transition border ${isActive ? (isLightMode ? 'bg-yellow-50 text-black border-yellow-200 shadow-sm' : 'bg-white/5 text-white border-neutral-600 shadow-lg shadow-blue-900/10') : 'border-transparent'}`}
+                          /* 재생 중인 자막 배경 투명(bg-transparent) 처리 */
+                          className={`p-4 rounded-xl cursor-pointer transition border ${isActive ? (isLightMode ? 'bg-transparent border-yellow-400 shadow-sm' : 'bg-transparent border-neutral-500 shadow-lg shadow-blue-900/10') : 'border-transparent'}`}
                         >
-                          <div className={`text-xs font-mono mb-1 ${isActive ? (isLightMode ? 'text-yellow-600' : 'text-yellow-500') : 'text-neutral-500'}`}>{formatTime(sub.start)}</div>
-                          <div className={`whitespace-pre-line leading-relaxed transition-all duration-300 ${isActive ? 'text-[24px] md:text-[30px] font-normal' : 'text-sm md:text-base opacity-60'}`}>{sub.text}</div>
+                          <div className={`text-xs font-mono mb-1 ${isActive ? (isLightMode ? 'text-yellow-700' : 'text-yellow-500') : 'text-neutral-500'}`}>{formatTime(sub.start)}</div>
+                          {/* 1. 활성 자막 폰트 크기 상향 (기존 대비 5% 상향 수치 유지)
+                              2. 비활성 자막 폰트 크기 상향 (기존 text-sm/base -> text-base/lg 로 상향) */}
+                          <div className={`whitespace-pre-line leading-relaxed transition-all duration-300 ${isActive ? `text-[25.2px] md:text-[31.5px] ${activeColorClass}` : `text-base md:text-lg ${inactiveColorClass}`}`}>
+                            {sub.text}
+                          </div>
                         </div>
                       );
                     })}
